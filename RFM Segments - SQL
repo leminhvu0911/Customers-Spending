@@ -1,0 +1,56 @@
+WITH rfm AS (
+    SELECT customer_id
+            , MAX(adjusted_created_at) AS the_last_active
+            , CURRENT_DATE - MAX(adjusted_created_at):: date AS recency
+            , count(customer_id) AS frequency
+            ,SUM(net_sales) AS monetary
+    FROM sales_adjusted
+    WHERE adjusted_created_at >= CURRENT_DATE - INTERVAL '1 YEAR'
+    GROUP BY customer_id    
+), rfm_percentary  AS (
+SELECT *
+        , PERCENT_RANK () OVER (ORDER BY frequency) AS frequency_percent 
+        , PERCENT_RANK () OVER (ORDER BY monetary) AS monetary_percent
+FROM rfm
+)
+, rfm_rank AS (
+SELECT *
+        , CASE 
+            WHEN  recency < 100 THEN 3 
+            WHEN  recency < 200 THEN 2 
+            ELSE 1 
+        END AS recency_rank
+        , CASE  
+            WHEN frequency_percent < 0.5 THEN 1 
+            WHEN frequency_percent < 0.8 THEN 2
+            ELSE 3 
+        END AS frequency_rank
+        , CASE 
+            WHEN monetary_percent < 0.5 THEN 1 
+            WHEN monetary_percent < 0.8 THEN 2 
+            ELSE 3 
+        END AS monetary_rank
+FROM rfm_percentary
+),  rfm_segment AS (
+SELECT *
+        , CONCAT (recency_rank,frequency_rank,monetary_rank) AS rfm_rank
+FROM rfm_rank
+)
+SELECT *
+        , CASE
+            WHEN rfm_rank IN ('333','323') THEN 'VIP'
+            WHEN rfm_rank IN ('313') THEN 'VIP, High Purchasing' 
+            WHEN rfm_rank IN ('233','223','133','123') THEN 'VIP but churning/churned'
+            WHEN rfm_rank IN ('213','113') THEN 'VIP,high purchasing but churning/churned'
+            WHEN rfm_rank IN ('332','331','322','321') THEN 'Normal'
+            WHEN rfm_rank IN ('131','231','132','232') THEN 'Loyal but churning/churned'
+            WHEN rfm_rank IN ('311','312') THEN 'New customer'
+            WHEN rfm_rank IN ('111','112','121','122','211','212','221','222') THEN 'Normal but churning/churned'
+            END AS rfm_segment
+FROM rfm_segment
+
+
+
+
+
+
