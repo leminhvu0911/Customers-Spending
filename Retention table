@@ -1,0 +1,49 @@
+WITH original AS 
+(
+    SELECT customer_id , adjusted_created_at AS created_at
+    FROM sales_adjusted 
+    WHERE adjusted_created_at >= CURRENT_DATE - INTERVAL '1 year'
+)
+, first_month AS 
+(
+    SELECT customer_id
+            ,DATE_TRUNC('MONTH',MIN(created_at)) as start_month
+    FROM original
+    GROUP BY customer_id
+), new_customer_in_month AS 
+(
+    SELECT start_month 
+            , COUNT(customer_id) AS new_customer 
+    FROM first_month
+    GROUP BY start_month
+)
+, retention_months AS 
+(
+    SELECT customer_id
+            , DATE_TRUNC  ('MONTH',created_at) AS retention_month
+    FROM original
+    GROUP BY customer_id
+            , DATE_TRUNC  ('MONTH',created_at)
+    ORDER BY 1,2 
+), retention_customer AS 
+(
+    SELECT  start_month
+            , retention_month
+            ,COUNT(retention_months.customer_id) AS retained_customer
+    FROM retention_months
+    LEFT JOIN first_month ON first_month.customer_id = retention_months.customer_id
+    GROUP BY start_month
+            , retention_month 
+    ORDER BY 1 
+)
+SELECT retention_customer.start_month
+        , retention_month
+        , CONCAT('M',extract(year from age(retention_month, retention_customer.start_month)) * 12 +
+extract(month from age(retention_month, retention_customer.start_month))) as months 
+        , new_customer
+        , retained_customer
+        , retained_customer:: NUMERIC/ new_customer::NUMERIC AS retention_rate
+FROM retention_customer
+LEFT JOIN new_customer_in_month ON retention_customer.start_month = new_customer_in_month.start_month
+
+  
